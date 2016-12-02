@@ -43,7 +43,7 @@ class Node:
 
 class SOM:
 
-    START_LEARNING_RATE = 0.07
+    START_LEARNING_RATE = 0.001
     NUM_ITERATIONS = 500
     GEOBOX = [-0.4315, 39.4196, -0.2857, 39.5045]
 
@@ -56,7 +56,13 @@ class SOM:
         self.time_constant = SOM.NUM_ITERATIONS / math.log(self.radius)
 
 
-        self.nodes = [[Node([random.uniform(SOM.GEOBOX[1], SOM.GEOBOX[3]), random.uniform(SOM.GEOBOX[0], SOM.GEOBOX[2])], j, i) for i in range(width)] for j in range(height)]
+        self.nodes = [[Node([random.uniform(0,1), random.uniform(0,1)], j, i) for i in range(width)] for j in range(height)]
+
+        '''
+        for j in range(self.height):
+            for i in range(self.width):
+                print(self.nodes[j][i].weights)
+        '''
 
 
     def getNeighborhoodRadius(self, iteration):
@@ -86,6 +92,7 @@ class SOM:
 
     def train(self, train_set):
         iteration = 0
+        #SOM.START_LEARNING_RATE /= len(train_set)
         learning_rate = SOM.START_LEARNING_RATE
 
         while( iteration < SOM.NUM_ITERATIONS ):
@@ -133,14 +140,19 @@ class SOM:
             stddev[bmu.x][bmu.y] += math.pow(tweet[0] - bmu.weights[0], 2) + math.pow(tweet[1] - bmu.weights[1], 2)
 
 
-
+        emptyBins = 0
         for i in range(self.height):
             for j in range(self.width):
                 #print(hist[i][j])
                 #stddev[i][j] = np.std(hist[i][j])
-                stddev[i][j] /= len(hist[i][j])
+                if len(hist[i][j]) != 0:
+                    stddev[i][j] /= len(hist[i][j])
+                else:
+                    emptyBins += 1
+
                 stddev[i][j] = math.sqrt(stddev[i][j])
                 #print(stddev[i][j])
+        print("{} of {} empty bins".format(emptyBins, self.height*self.width))
 
 
 
@@ -180,6 +192,21 @@ class SOM:
 
 
 
+def normalize(data):
+    lats = [i[0] for i in data]
+    lons = [i[1] for i in data]
+
+    minLat = min(lats)
+    maxLat = max(lats)
+
+    minLon = min(lons)
+    maxLon = max(lons)
+
+    for tweet in data:
+            tweet[0] = (tweet[0] - minLat) / (minLat + maxLat)
+            tweet[1] = (tweet[1] - minLon) / (minLon + maxLon)
+
+    return data
 
 
 
@@ -188,6 +215,7 @@ def main():
     conn = psycopg2.connect("dbname=template_postgis user=postgres password=postgres")
 
     cur = conn.cursor()
+    #query = "SELECT ST_Y(twe_coordenadas), ST_X(twe_coordenadas) FROM tweet, usuario WHERE twe_usuario = usu_id AND usu_turista"
     query = "SELECT ST_Y(twe_coordenadas), ST_X(twe_coordenadas) FROM tweet"
     cur.execute(query)
 
@@ -198,6 +226,7 @@ def main():
 
     data = [list(elem) for elem in result]
 
+    data = normalize(data)
 
 
     for i in range(3, 20):
@@ -205,17 +234,17 @@ def main():
             avg = 0.
             min = float("infinity")
             max = -min
-            #for r in range(10):
-            if i * j <= 100:
-                som = SOM(i,j)
-                som.train(data)
-                db = som.classify(data)
-                if db < min:
-                    min = db
-                if db > max:
-                    max = db
-                avg += db
-                print(db)
+            for r in range(10):
+                if i * j <= 100:
+                    som = SOM(i,j)
+                    som.train(data)
+                    db = som.classify(data)
+                    if db < min:
+                        min = db
+                    if db > max:
+                        max = db
+                    avg += db
+                #print(db)
 
 
             avg /= 10
